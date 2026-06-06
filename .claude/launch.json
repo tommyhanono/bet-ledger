@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bet-ledger",
+      "runtimeExecutable": "/private/tmp/node-v22.16.0-darwin-arm64/bin/npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 5173
+    }
+  ]
+}
