@@ -65,8 +65,13 @@ export const useLocalStorage = (storageKey = 'betledger-v1') => {
   })
 
   const _set = useCallback((next) => {
-    setEntries(next)
-    saveEntries(storageKey, next)
+    // next can be a value OR a functional updater (prev => newValue).
+    // We must resolve it before saving to localStorage.
+    setEntries((prev) => {
+      const resolved = typeof next === 'function' ? next(prev) : next
+      saveEntries(storageKey, resolved)
+      return resolved
+    })
   }, [storageKey])
 
   const addEntry = useCallback((data) => {
