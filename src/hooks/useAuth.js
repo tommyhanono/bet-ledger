@@ -12,9 +12,19 @@ const DEFAULT_USERS = [
     name: "Tommy's Account",
     password: 'tommyhanono987',
     storageKey: 'betledger-v1-tommy',
-    createdAt: new Date().toISOString(),
+    createdAt: '2024-01-01T00:00:00.000Z',
+  },
+  {
+    id: 'testcenter',
+    name: 'TestCenter',
+    password: '1234567',
+    storageKey: 'betledger-v1-testcenter',
+    createdAt: '2024-01-01T00:00:00.000Z',
   },
 ]
+
+// Users that must always exist — added if missing (e.g. existing installs)
+const REQUIRED_USERS = DEFAULT_USERS
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -70,9 +80,17 @@ export const useAuth = () => {
     let data = loadAuth()
     if (!data) {
       data = { users: DEFAULT_USERS }
-      saveAuth(data)
     }
-    // Migrate legacy data to tommy's key
+    // Ensure every required user exists (handles existing installs)
+    let changed = false
+    for (const req of REQUIRED_USERS) {
+      if (!data.users.find(u => u.id === req.id)) {
+        data = { ...data, users: [...data.users, req] }
+        changed = true
+      }
+    }
+    saveAuth(data)
+    // Migrate legacy data (betledger-v1) → tommy's key on first run
     const tommy = data.users.find(u => u.id === 'tommy')
     if (tommy) migrateLegacy(tommy.storageKey)
     return data
