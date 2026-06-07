@@ -1,10 +1,26 @@
 import { useState, useRef } from 'react'
-import { formatDate } from '../utils/formatters'
 
-export default function Settings({ entries, onImport, onReset }) {
+const AVATAR_COLORS = ['#3b82f6', '#8b5cf6', '#f59e0b', '#22c55e', '#ef4444', '#0ea5e9']
+const initials = (name) => name.split(' ').map(w => w[0]).join('').slice(0, 2).toUpperCase()
+const avatarColor = (users, id) => AVATAR_COLORS[users.findIndex(u => u.id === id) % AVATAR_COLORS.length]
+
+export default function Settings({ entries, onImport, onReset, currentUser, authHook, onLogout }) {
   const [resetText, setResetText] = useState('')
   const [showResetDialog, setShowResetDialog] = useState(false)
   const fileRef = useRef()
+
+  // Accounts state
+  const [showAddUser, setShowAddUser] = useState(false)
+  const [newName, setNewName] = useState('')
+  const [newPw, setNewPw] = useState('')
+  const [newPwConfirm, setNewPwConfirm] = useState('')
+  const [addError, setAddError] = useState('')
+  const [changePwMode, setChangePwMode] = useState(null) // userId
+  const [newPwChange, setNewPwChange] = useState('')
+  const [pwChangeError, setPwChangeError] = useState('')
+
+  const { users, addUser, updateUserPassword, deleteUser } = authHook || {}
+  const canAddMore = users && users.length < 3
 
   const exportCSV = () => {
     const headers = ['id', 'date', 'category', 'type', 'amount', 'platform', 'odds', 'session', 'notes', 'isInitialBalance']
@@ -64,11 +80,145 @@ export default function Settings({ entries, onImport, onReset }) {
     setResetText('')
   }
 
+  const handleAddUser = () => {
+    setAddError('')
+    if (!newName.trim()) return setAddError('Name is required')
+    if (newPw.length < 4) return setAddError('Password must be at least 4 characters')
+    if (newPw !== newPwConfirm) return setAddError('Passwords do not match')
+    addUser(newName.trim(), newPw)
+    setNewName(''); setNewPw(''); setNewPwConfirm(''); setShowAddUser(false)
+  }
+
+  const handleChangePassword = (userId) => {
+    setPwChangeError('')
+    if (newPwChange.length < 4) return setPwChangeError('Password must be at least 4 characters')
+    updateUserPassword(userId, newPwChange)
+    setChangePwMode(null); setNewPwChange('')
+  }
+
   return (
     <div className="fade-in space-y-6 max-w-2xl">
       <div>
         <h1 className="font-heading text-2xl font-bold text-white">Settings</h1>
         <p className="text-sm text-slate-500 mt-1">Manage your data and preferences</p>
+      </div>
+
+      {/* ── Accounts ─────────────────────────────────────────────── */}
+      <div className="bg-[#1a1d27] border border-white/8 rounded-xl p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div>
+            <h3 className="font-heading font-semibold text-white">Accounts</h3>
+            <p className="text-xs text-slate-500 mt-0.5">Up to 3 accounts — each with their own data</p>
+          </div>
+          {canAddMore && !showAddUser && (
+            <button
+              onClick={() => setShowAddUser(true)}
+              className="text-xs px-3 py-1.5 rounded-lg border border-blue-500/30 text-blue-400 hover:bg-blue-500/10 transition-all"
+            >
+              + Add Account
+            </button>
+          )}
+        </div>
+
+        {/* Existing users */}
+        <div className="space-y-3">
+          {users && users.map(u => (
+            <div key={u.id} className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${u.id === currentUser?.id ? 'border-blue-500/20 bg-blue-500/5' : 'border-white/5'}`}>
+              <div
+                className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-heading font-bold text-white flex-shrink-0"
+                style={{ background: avatarColor(users, u.id) }}
+              >
+                {initials(u.name)}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-medium text-white truncate">{u.name}</p>
+                  {u.id === currentUser?.id && (
+                    <span className="text-xs text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full">Active</span>
+                  )}
+                  {u.id === 'tommy' && (
+                    <span className="text-xs text-amber-400/70 bg-amber-500/10 px-2 py-0.5 rounded-full">Owner</span>
+                  )}
+                </div>
+                {changePwMode === u.id ? (
+                  <div className="mt-2 flex gap-2">
+                    <input
+                      type="password"
+                      value={newPwChange}
+                      onChange={e => { setNewPwChange(e.target.value); setPwChangeError('') }}
+                      placeholder="New password"
+                      className="flex-1 bg-[#0f1117] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/40"
+                    />
+                    <button onClick={() => handleChangePassword(u.id)} className="text-xs px-2 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white transition-all">Save</button>
+                    <button onClick={() => { setChangePwMode(null); setNewPwChange(''); setPwChangeError('') }} className="text-xs px-2 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white transition-all">✕</button>
+                  </div>
+                ) : (
+                  pwChangeError && changePwMode === u.id && <p className="text-xs text-red-400 mt-1">{pwChangeError}</p>
+                )}
+              </div>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <button
+                  onClick={() => { setChangePwMode(u.id); setPwChangeError(''); setNewPwChange('') }}
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-white hover:border-white/20 transition-all"
+                  title="Change password"
+                >
+                  🔑
+                </button>
+                {u.id !== 'tommy' && u.id !== currentUser?.id && (
+                  <button
+                    onClick={() => { if (window.confirm(`Delete ${u.name}?`)) deleteUser(u.id) }}
+                    className="text-xs px-2.5 py-1.5 rounded-lg border border-white/10 text-slate-400 hover:text-red-400 hover:border-red-500/30 transition-all"
+                    title="Delete account"
+                  >
+                    🗑️
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Add user form */}
+        {showAddUser && (
+          <div className="mt-4 p-4 bg-[#0f1117] rounded-xl border border-white/8 space-y-3">
+            <p className="text-sm font-medium text-white">New Account</p>
+            <input
+              value={newName}
+              onChange={e => setNewName(e.target.value)}
+              placeholder="Name (e.g. Maria's Account)"
+              className="w-full bg-[#1a1d27] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/40"
+            />
+            <input
+              type="password"
+              value={newPw}
+              onChange={e => setNewPw(e.target.value)}
+              placeholder="Password"
+              className="w-full bg-[#1a1d27] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/40"
+            />
+            <input
+              type="password"
+              value={newPwConfirm}
+              onChange={e => setNewPwConfirm(e.target.value)}
+              placeholder="Confirm password"
+              className="w-full bg-[#1a1d27] border border-white/10 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-blue-500/40"
+            />
+            {addError && <p className="text-xs text-red-400">{addError}</p>}
+            <div className="flex gap-2">
+              <button onClick={handleAddUser} className="px-4 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium transition-all">Create Account</button>
+              <button onClick={() => { setShowAddUser(false); setNewName(''); setNewPw(''); setNewPwConfirm(''); setAddError('') }} className="px-4 py-2 rounded-lg border border-white/10 text-slate-400 hover:text-white text-sm transition-all">Cancel</button>
+            </div>
+          </div>
+        )}
+
+        {/* Sign out */}
+        <div className="mt-5 pt-4 border-t border-white/5">
+          <button
+            onClick={onLogout}
+            className="text-sm text-slate-400 hover:text-white transition-colors flex items-center gap-2"
+          >
+            <span>🚪</span> Sign out of {currentUser?.name}
+          </button>
+        </div>
       </div>
 
       {/* Export */}

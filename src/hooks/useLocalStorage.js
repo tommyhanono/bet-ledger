@@ -1,9 +1,7 @@
 import { useState, useCallback } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
-const STORAGE_KEY = 'betledger-v1'
-
-const SEED_DATA = [
+const makeSeed = () => [
   {
     id: uuidv4(),
     category: 'casino',
@@ -42,32 +40,34 @@ const SEED_DATA = [
   },
 ]
 
-const loadEntries = () => {
+const loadEntries = (key) => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = localStorage.getItem(key)
     if (raw) return JSON.parse(raw)
   } catch {}
   return null
 }
 
-const saveEntries = (entries) => {
+const saveEntries = (key, entries) => {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(entries))
+    localStorage.setItem(key, JSON.stringify(entries))
   } catch {}
 }
 
-export const useLocalStorage = () => {
+// storageKey is provided by the logged-in user object (e.g. 'betledger-v1-tommy')
+export const useLocalStorage = (storageKey = 'betledger-v1') => {
   const [entries, setEntries] = useState(() => {
-    const stored = loadEntries()
+    const stored = loadEntries(storageKey)
     if (stored) return stored
-    saveEntries(SEED_DATA)
-    return SEED_DATA
+    const seed = makeSeed()
+    saveEntries(storageKey, seed)
+    return seed
   })
 
   const _set = useCallback((next) => {
     setEntries(next)
-    saveEntries(next)
-  }, [])
+    saveEntries(storageKey, next)
+  }, [storageKey])
 
   const addEntry = useCallback((data) => {
     _set((prev) => [...prev, { id: uuidv4(), ...data, isInitialBalance: false }])
@@ -82,7 +82,7 @@ export const useLocalStorage = () => {
   }, [_set])
 
   const resetAll = useCallback(() => {
-    _set(SEED_DATA.map((e) => ({ ...e, id: uuidv4() })))
+    _set(makeSeed())
   }, [_set])
 
   const importEntries = useCallback((newEntries) => {
