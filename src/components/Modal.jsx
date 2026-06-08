@@ -86,7 +86,7 @@ export default function Modal({ open, onClose, onSave, initial }) {
           {/* Category */}
           <div>
             <label className="block text-xs text-slate-400 mb-1.5 font-medium">Category</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               {Object.entries(CATEGORY_LABELS).map(([val, label]) => (
                 <button
                   key={val}

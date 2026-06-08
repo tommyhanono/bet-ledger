@@ -1,23 +1,26 @@
 import { parseISO, format, getDay } from 'date-fns'
 
-export const CATEGORIES = ['casino', 'sports', 'online-gambling']
+export const CATEGORIES = ['casino', 'sports', 'online-gambling', 'other']
 
 export const CATEGORY_LABELS = {
   casino: 'Casino',
   sports: 'Sports Betting',
   'online-gambling': 'Online Gambling',
+  other: 'Other',
 }
 
 export const CATEGORY_COLORS = {
   casino: '#f59e0b',
   sports: '#0ea5e9',
   'online-gambling': '#8b5cf6',
+  other: '#10b981',  // emerald
 }
 
 export const TYPE_SUGGESTIONS = {
   casino: ['Blackjack', 'Roulette', 'Poker', 'Slots', 'Baccarat', 'Craps'],
   sports: ['Moneyline', 'Spread', 'Parlay', 'Over/Under', 'Prop Bet', 'Futures'],
   'online-gambling': ['Crash', 'Mines', 'Dice', 'Plinko', 'Slots', 'Roulette', 'Blackjack', 'Stake Originals'],
+  other: ['Blackjack', 'Poker', 'FIFA', 'Random', 'Fantasy', 'Golf', 'Trivia', 'Card Game'],
 }
 
 const real = (entries) => entries.filter((e) => !e.isInitialBalance)

@@ -4,6 +4,7 @@ const bg = {
   casino: 'rgba(245,158,11,0.15)',
   sports: 'rgba(14,165,233,0.15)',
   'online-gambling': 'rgba(139,92,246,0.15)',
+  other: 'rgba(16,185,129,0.15)',
 }
 
 export default function CategoryBadge({ category, size = 'sm' }) {
