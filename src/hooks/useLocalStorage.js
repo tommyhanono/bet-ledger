@@ -1,98 +1,155 @@
-import { useState, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { v4 as uuidv4 } from 'uuid'
+import {
+  collection, doc, setDoc, deleteDoc, getDocs,
+  onSnapshot, writeBatch, query, orderBy,
+} from 'firebase/firestore'
+import { db } from '../firebase'
 
+// ── Seed data ────────────────────────────────────────────────────────────────
 const makeSeed = () => [
-  {
-    id: uuidv4(),
-    category: 'casino',
-    type: 'Initial Balance',
-    amount: -2000,
-    date: '2024-01-01',
-    platform: '',
-    odds: null,
-    session: null,
-    notes: 'Starting deficit — Casino',
-    isInitialBalance: true,
-  },
-  {
-    id: uuidv4(),
-    category: 'sports',
-    type: 'Initial Balance',
-    amount: -500,
-    date: '2024-01-01',
-    platform: '',
-    odds: null,
-    session: null,
-    notes: 'Starting deficit — Sports Betting',
-    isInitialBalance: true,
-  },
-  {
-    id: uuidv4(),
-    category: 'online-gambling',
-    type: 'Initial Balance',
-    amount: -1100,
-    date: '2024-01-01',
-    platform: 'Stake',
-    odds: null,
-    session: null,
-    notes: 'Starting deficit — Stake / Online Gambling',
-    isInitialBalance: true,
-  },
+  { id: uuidv4(), category: 'casino',          type: 'Initial Balance', amount: -2000, date: '2024-01-01', platform: '', odds: null, session: null, notes: 'Starting deficit — Casino',           isInitialBalance: true },
+  { id: uuidv4(), category: 'sports',          type: 'Initial Balance', amount: -500,  date: '2024-01-01', platform: '', odds: null, session: null, notes: 'Starting deficit — Sports Betting',    isInitialBalance: true },
+  { id: uuidv4(), category: 'online-gambling', type: 'Initial Balance', amount: -1100, date: '2024-01-01', platform: 'Stake', odds: null, session: null, notes: 'Starting deficit — Stake',         isInitialBalance: true },
 ]
 
-const loadEntries = (key) => {
-  try {
-    const raw = localStorage.getItem(key)
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return null
+// ── localStorage helpers (local cache for fast loads) ────────────────────────
+const localLoad  = (key) => { try { const r = localStorage.getItem(key); return r ? JSON.parse(r) : null } catch { return null } }
+const localSave  = (key, data) => { try { localStorage.setItem(key, JSON.stringify(data)) } catch {} }
+
+// ── Firestore helpers ────────────────────────────────────────────────────────
+const colRef = (userId) => collection(db, 'users', userId, 'entries')
+
+const fsWrite = async (userId, entry) => {
+  const clean = Object.fromEntries(
+    Object.entries(entry).map(([k, v]) => [k, v === undefined ? null : v])
+  )
+  await setDoc(doc(db, 'users', userId, 'entries', entry.id), clean)
 }
 
-const saveEntries = (key, entries) => {
-  try {
-    localStorage.setItem(key, JSON.stringify(entries))
-  } catch {}
+const fsDelete = async (userId, id) => {
+  await deleteDoc(doc(db, 'users', userId, 'entries', id))
 }
 
-// storageKey is provided by the logged-in user object (e.g. 'betledger-v1-tommy')
-export const useLocalStorage = (storageKey = 'betledger-v1') => {
-  const [entries, setEntries] = useState(() => {
-    const stored = loadEntries(storageKey)
-    if (stored) return stored
-    const seed = makeSeed()
-    saveEntries(storageKey, seed)
-    return seed
+const fsBatch = async (userId, entries) => {
+  const batch = writeBatch(db)
+  entries.forEach(e => {
+    const clean = Object.fromEntries(
+      Object.entries(e).map(([k, v]) => [k, v === undefined ? null : v])
+    )
+    batch.set(doc(db, 'users', userId, 'entries', e.id), clean)
   })
+  await batch.commit()
+}
 
-  const _set = useCallback((next) => {
-    // next can be a value OR a functional updater (prev => newValue).
-    // We must resolve it before saving to localStorage.
+// ── Hook ─────────────────────────────────────────────────────────────────────
+// userId   = e.g. 'tommy' (used as Firestore document path: users/tommy/entries/...)
+// localKey = e.g. 'betledger-v1-tommy' (localStorage cache key)
+export const useLocalStorage = (localKey = 'betledger-v1', userId = null) => {
+  const [entries, setEntries] = useState(() => localLoad(localKey) || [])
+  const [synced, setSynced]   = useState(false)
+  const [loading, setLoading] = useState(true)
+  const skipNextSnapshot = useRef(false)
+
+  // ── Subscribe to Firestore realtime updates ──────────────────────────────
+  useEffect(() => {
+    if (!userId) return
+    setLoading(true)
+
+    const unsub = onSnapshot(
+      colRef(userId),
+      (snap) => {
+        if (skipNextSnapshot.current) { skipNextSnapshot.current = false; return }
+
+        const docs = snap.docs.map(d => d.data())
+
+        // First load: if Firestore is empty AND we have local cache → seed Firestore
+        if (docs.length === 0 && !synced) {
+          const cached = localLoad(localKey)
+          const initial = cached && cached.length > 0 ? cached : makeSeed()
+          fsBatch(userId, initial).catch(console.error)
+          // onSnapshot will fire again with the seeded data
+          return
+        }
+
+        const sorted = docs.sort((a, b) => a.date.localeCompare(b.date))
+        setEntries(sorted)
+        localSave(localKey, sorted)
+        setSynced(true)
+        setLoading(false)
+      },
+      (err) => {
+        console.warn('Firestore offline, using local cache:', err.message)
+        const cached = localLoad(localKey)
+        if (cached) setEntries(cached)
+        setLoading(false)
+      }
+    )
+
+    return unsub
+  }, [userId, localKey])
+
+  // ── Optimistic update helper ─────────────────────────────────────────────
+  const _set = useCallback((next, firestoreOp) => {
     setEntries((prev) => {
       const resolved = typeof next === 'function' ? next(prev) : next
-      saveEntries(storageKey, resolved)
+      localSave(localKey, resolved)
       return resolved
     })
-  }, [storageKey])
+    if (userId && firestoreOp) {
+      firestoreOp().catch(console.error)
+    }
+  }, [localKey, userId])
 
+  // ── Public API ───────────────────────────────────────────────────────────
   const addEntry = useCallback((data) => {
-    _set((prev) => [...prev, { id: uuidv4(), ...data, isInitialBalance: false }])
-  }, [_set])
+    const entry = { id: uuidv4(), ...data, isInitialBalance: false }
+    _set((prev) => [...prev, entry], () => fsWrite(userId, entry))
+  }, [_set, userId])
 
   const editEntry = useCallback((id, data) => {
-    _set((prev) => prev.map((e) => (e.id === id ? { ...e, ...data } : e)))
-  }, [_set])
+    setEntries((prev) => {
+      const resolved = prev.map((e) => (e.id === id ? { ...e, ...data } : e))
+      localSave(localKey, resolved)
+      if (userId) {
+        const updated = resolved.find(e => e.id === id)
+        if (updated) fsWrite(userId, updated).catch(console.error)
+      }
+      return resolved
+    })
+  }, [userId, localKey])
 
   const deleteEntry = useCallback((id) => {
-    _set((prev) => prev.filter((e) => e.id !== id))
-  }, [_set])
+    _set((prev) => prev.filter((e) => e.id !== id), () => fsDelete(userId, id))
+  }, [_set, userId])
 
-  const resetAll = useCallback(() => {
-    _set(makeSeed())
-  }, [_set])
+  const resetAll = useCallback(async () => {
+    const seed = makeSeed()
+    // Delete all existing then write seed
+    if (userId) {
+      try {
+        const snap = await getDocs(colRef(userId))
+        const batch = writeBatch(db)
+        snap.docs.forEach(d => batch.delete(d.ref))
+        await batch.commit()
+        await fsBatch(userId, seed)
+      } catch (e) { console.error(e) }
+    }
+    _set(seed)
+  }, [_set, userId])
 
-  const importEntries = useCallback((newEntries) => {
+  const importEntries = useCallback(async (newEntries) => {
+    if (userId) {
+      try {
+        const snap = await getDocs(colRef(userId))
+        const batch = writeBatch(db)
+        snap.docs.forEach(d => batch.delete(d.ref))
+        await batch.commit()
+        await fsBatch(userId, newEntries)
+      } catch (e) { console.error(e) }
+    }
     _set(newEntries)
-  }, [_set])
+  }, [_set, userId])
 
-  return { entries, addEntry, editEntry, deleteEntry, resetAll, importEntries }
+  return { entries, loading, synced, addEntry, editEntry, deleteEntry, resetAll, importEntries }
 }
