@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
 import CategoryBadge from '../components/CategoryBadge'
-import { formatCurrency, formatDate } from '../utils/formatters'
+import { formatCurrency, formatDate, formatDateTime } from '../utils/formatters'
 import { CATEGORIES } from '../utils/analytics'
 
 const PAGE_SIZE = 25
 
 const COLS = [
-  { key: 'date', label: 'Date' },
+  { key: 'date', label: 'Date & Time' },
   { key: 'category', label: 'Category' },
   { key: 'type', label: 'Type' },
   { key: 'platform', label: 'Platform' },
@@ -44,6 +44,13 @@ export default function History({ entries, onEdit, onDelete }) {
       const bv = b[sort.key] ?? ''
       if (av < bv) return -sort.dir
       if (av > bv) return sort.dir
+      // Tiebreak on date: use time as secondary sort
+      if (sort.key === 'date') {
+        const at = a.time ?? '00:00'
+        const bt = b.time ?? '00:00'
+        if (at < bt) return -sort.dir
+        if (at > bt) return sort.dir
+      }
       return 0
     })
   }, [filtered, sort])
@@ -163,7 +170,12 @@ export default function History({ entries, onEdit, onDelete }) {
                     className="border-b border-white/3 hover:bg-white/3 transition-colors cursor-pointer"
                     onClick={() => setExpanded(expanded === e.id ? null : e.id)}
                   >
-                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDate(e.date)}</td>
+                    <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">
+                      <span>{formatDate(e.date)}</span>
+                      {e.time && <span className="block text-slate-600 text-xs mt-0.5">{
+                        (() => { const [h,m] = e.time.split(':').map(Number); const ap = h>=12?'PM':'AM'; return `${h%12||12}:${String(m).padStart(2,'0')} ${ap}` })()
+                      }</span>}
+                    </td>
                     <td className="px-4 py-3"><CategoryBadge category={e.category} /></td>
                     <td className="px-4 py-3 text-slate-300">
                       {e.type}

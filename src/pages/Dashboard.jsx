@@ -192,7 +192,12 @@ export default function Dashboard({ entries, onAddEntry, onEdit }) {
                 onClick={() => !e.isInitialBalance && onEdit(e)}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs text-slate-600 w-20 flex-shrink-0">{formatDate(e.date)}</span>
+                  <span className="text-xs text-slate-600 flex-shrink-0 w-28">
+                    {formatDate(e.date)}
+                    {e.time && <span className="block text-slate-700">{
+                      (() => { const [h,m] = e.time.split(':').map(Number); const ap = h>=12?'PM':'AM'; return `${h%12||12}:${String(m).padStart(2,'0')} ${ap}` })()
+                    }</span>}
+                  </span>
                   <CategoryBadge category={e.category} />
                   <span className="text-sm text-slate-300 truncate">{e.type}</span>
                   {e.isInitialBalance && (

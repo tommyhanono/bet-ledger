@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { CATEGORY_LABELS, CATEGORY_COLORS, TYPE_SUGGESTIONS } from '../utils/analytics'
-import { todayISO } from '../utils/formatters'
+import { todayISO, nowTime } from '../utils/formatters'
 
 const PLATFORMS = ['Stake', 'DraftKings', 'Hard Rock', 'BetMGM', 'FanDuel', 'PointsBet', 'Caesars', 'MGM Grand', 'Bellagio', 'Aria']
 
@@ -10,6 +10,7 @@ const EMPTY = {
   result: 'loss',
   amount: '',
   date: todayISO(),
+  time: nowTime(),
   platform: '',
   odds: '',
   session: '',
@@ -29,9 +30,10 @@ export default function Modal({ open, onClose, onSave, initial }) {
           ...initial,
           result: initial.amount >= 0 ? 'win' : 'loss',
           amount: String(Math.abs(initial.amount)),
+          time: initial.time || '',
         })
       } else {
-        setForm({ ...EMPTY, date: todayISO() })
+        setForm({ ...EMPTY, date: todayISO(), time: nowTime() })
       }
       setErrors({})
     }
@@ -58,6 +60,7 @@ export default function Modal({ open, onClose, onSave, initial }) {
       type: form.type.trim(),
       amount,
       date: form.date,
+      time: form.time || null,
       platform: form.platform.trim() || null,
       odds: form.category === 'sports' && form.odds.trim() ? form.odds.trim() : null,
       session: form.session.trim() || null,
@@ -168,15 +171,26 @@ export default function Modal({ open, onClose, onSave, initial }) {
             </div>
           </div>
 
-          {/* Date */}
-          <div>
-            <label className="block text-xs text-slate-400 mb-1.5 font-medium">Date {errors.date && <span className="text-red-400 ml-1">{errors.date}</span>}</label>
-            <input
-              type="date"
-              value={form.date}
-              onChange={(e) => set('date', e.target.value)}
-              className="w-full bg-[#0f1117] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500/50"
-            />
+          {/* Date + Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 font-medium">Date {errors.date && <span className="text-red-400 ml-1">{errors.date}</span>}</label>
+              <input
+                type="date"
+                value={form.date}
+                onChange={(e) => set('date', e.target.value)}
+                className="w-full bg-[#0f1117] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500/50"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-slate-400 mb-1.5 font-medium">Time <span className="text-slate-600">(optional)</span></label>
+              <input
+                type="time"
+                value={form.time}
+                onChange={(e) => set('time', e.target.value)}
+                className="w-full bg-[#0f1117] border border-white/10 rounded-lg px-3 py-2.5 text-sm text-white focus:outline-none focus:border-blue-500/50"
+              />
+            </div>
           </div>
 
           {/* Platform */}
