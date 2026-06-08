@@ -1,14 +1,17 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { doc, onSnapshot, setDoc } from 'firebase/firestore'
+import { db } from '../firebase'
 
-const AUTH_KEY = 'betledger-auth'
-const SESSION_KEY = 'betledger-session'
+const SESSION_KEY  = 'betledger-session'
 const SESSION_DAYS = 30
-const LEGACY_KEY = 'betledger-v1'
+const LEGACY_KEY   = 'betledger-v1'
+const FS_DOC       = doc(db, 'config', 'accounts') // shared Firestore users list
 
-// Default users seeded on first launch
-// freshStart: true  → account begins with ZERO entries (empty slate)
-// freshStart: false → account begins with Tommy's -$3,600 deficit seed
-const DEFAULT_USERS = [
+// ── Seed users (always present, cannot be deleted) ────────────────────────────
+// isAdmin: true     → can create/delete/view all accounts
+// freshStart: false → account begins with -$3,600 deficit seed
+// freshStart: true  → account begins at $0
+const SEED_USERS = [
   {
     id: 'tommy',
     name: "Tommy's Account",
@@ -16,6 +19,7 @@ const DEFAULT_USERS = [
     storageKey: 'betledger-v1-tommy',
     createdAt: '2024-01-01T00:00:00.000Z',
     freshStart: false,
+    isAdmin: true,
   },
   {
     id: 'testcenter',
@@ -24,6 +28,7 @@ const DEFAULT_USERS = [
     storageKey: 'betledger-v1-testcenter',
     createdAt: '2024-01-01T00:00:00.000Z',
     freshStart: true,
+    isAdmin: false,
   },
   {
     id: 'gabobas',
@@ -32,113 +37,106 @@ const DEFAULT_USERS = [
     storageKey: 'betledger-v1-gabobas',
     createdAt: '2024-01-01T00:00:00.000Z',
     freshStart: true,
+    isAdmin: false,
   },
 ]
 
-// Users that must always exist — added if missing (e.g. existing installs)
-const REQUIRED_USERS = DEFAULT_USERS
-
-// ── helpers ──────────────────────────────────────────────────────────────────
-
-const loadAuth = () => {
-  try {
-    const raw = localStorage.getItem(AUTH_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return null
+// ── localStorage cache for instant load ──────────────────────────────────────
+const localLoadUsers = () => {
+  try { const r = localStorage.getItem('betledger-auth'); return r ? JSON.parse(r).users : null } catch { return null }
+}
+const localSaveUsers = (users) => {
+  try { localStorage.setItem('betledger-auth', JSON.stringify({ users })) } catch {}
 }
 
-const saveAuth = (data) => {
-  try { localStorage.setItem(AUTH_KEY, JSON.stringify(data)) } catch {}
-}
-
+// ── Session helpers ───────────────────────────────────────────────────────────
 const loadSession = () => {
   try {
-    const raw = localStorage.getItem(SESSION_KEY)
-    if (!raw) return null
-    const s = JSON.parse(raw)
-    if (s.expiresAt && Date.now() > s.expiresAt) {
-      localStorage.removeItem(SESSION_KEY)
-      return null
-    }
+    const r = localStorage.getItem(SESSION_KEY)
+    if (!r) return null
+    const s = JSON.parse(r)
+    if (s.expiresAt && Date.now() > s.expiresAt) { localStorage.removeItem(SESSION_KEY); return null }
     return s
-  } catch {}
-  return null
+  } catch { return null }
 }
-
 const saveSession = (userId) => {
-  const s = { userId, expiresAt: Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000 }
-  try { localStorage.setItem(SESSION_KEY, JSON.stringify(s)) } catch {}
+  try { localStorage.setItem(SESSION_KEY, JSON.stringify({ userId, expiresAt: Date.now() + SESSION_DAYS * 864e5 })) } catch {}
 }
+const clearSession = () => { try { localStorage.removeItem(SESSION_KEY) } catch {} }
 
-const clearSession = () => {
-  try { localStorage.removeItem(SESSION_KEY) } catch {}
-}
-
-// Migrate legacy data (betledger-v1) → tommy's storage key on first run
-const migrateLegacy = (tommyKey) => {
+// Migrate legacy localStorage data → tommy's key
+const migrateLegacy = () => {
   try {
     const legacy = localStorage.getItem(LEGACY_KEY)
-    if (legacy && !localStorage.getItem(tommyKey)) {
-      localStorage.setItem(tommyKey, legacy)
-    }
+    if (legacy && !localStorage.getItem('betledger-v1-tommy'))
+      localStorage.setItem('betledger-v1-tommy', legacy)
   } catch {}
 }
 
-// ── hook ─────────────────────────────────────────────────────────────────────
+// Merge: ensure all SEED_USERS exist in the list (add missing, update isAdmin/freshStart from seed)
+const mergeWithSeed = (users) => {
+  let merged = [...users]
+  for (const seed of SEED_USERS) {
+    const idx = merged.findIndex(u => u.id === seed.id)
+    if (idx === -1) merged.push(seed)
+    else merged[idx] = { ...merged[idx], isAdmin: seed.isAdmin, freshStart: seed.freshStart }
+  }
+  return merged
+}
 
+// ── Hook ──────────────────────────────────────────────────────────────────────
 export const useAuth = () => {
-  const [authData, setAuthDataState] = useState(() => {
-    let data = loadAuth()
-    if (!data) {
-      data = { users: DEFAULT_USERS }
-    }
-    // Ensure every required user exists (handles existing installs)
-    let changed = false
-    for (const req of REQUIRED_USERS) {
-      if (!data.users.find(u => u.id === req.id)) {
-        data = { ...data, users: [...data.users, req] }
-        changed = true
-      }
-    }
-    saveAuth(data)
-    // Migrate legacy data (betledger-v1) → tommy's key on first run
-    const tommy = data.users.find(u => u.id === 'tommy')
-    if (tommy) migrateLegacy(tommy.storageKey)
-    return data
+  const [users, setUsers] = useState(() => {
+    migrateLegacy()
+    const cached = localLoadUsers()
+    return cached ? mergeWithSeed(cached) : SEED_USERS
   })
 
   const [currentUserId, setCurrentUserId] = useState(() => {
-    const session = loadSession()
-    if (!session) return null
-    const data = loadAuth()
-    const exists = data?.users.find(u => u.id === session.userId)
-    return exists ? session.userId : null
+    const s = loadSession()
+    if (!s) return null
+    const cached = localLoadUsers()
+    return cached?.find(u => u.id === s.userId) ? s.userId : null
   })
 
-  const _setAuth = (data) => {
-    setAuthDataState(data)
-    saveAuth(data)
+  // ── Sync users list with Firestore in real-time ───────────────────────────
+  useEffect(() => {
+    const unsub = onSnapshot(FS_DOC, (snap) => {
+      if (snap.exists()) {
+        const fsUsers = snap.data().users || []
+        const merged = mergeWithSeed(fsUsers)
+        setUsers(merged)
+        localSaveUsers(merged)
+      } else {
+        // First time: push seed users to Firestore
+        setDoc(FS_DOC, { users: SEED_USERS }).catch(console.error)
+      }
+    }, (err) => {
+      console.warn('Firestore users offline, using cache:', err.message)
+    })
+    return unsub
+  }, [])
+
+  const _saveUsers = (newUsers) => {
+    setUsers(newUsers)
+    localSaveUsers(newUsers)
+    setDoc(FS_DOC, { users: newUsers }).catch(console.error)
   }
 
-  const users = authData.users
   const currentUser = users.find(u => u.id === currentUserId) || null
 
   const login = (userId, password, remember) => {
     const user = users.find(u => u.id === userId)
-    if (!user) return false
-    if (user.password !== password) return false
+    if (!user || user.password !== password) return false
     setCurrentUserId(userId)
     if (remember) saveSession(userId)
     else clearSession()
     return true
   }
 
-  const logout = () => {
-    setCurrentUserId(null)
-    clearSession()
-  }
+  const logout = () => { setCurrentUserId(null); clearSession() }
 
+  // Admin-only operations ───────────────────────────────────────────────────
   const addUser = (name, password) => {
     const id = name.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '') + '_' + Date.now()
     const newUser = {
@@ -147,32 +145,21 @@ export const useAuth = () => {
       password,
       storageKey: `betledger-v1-${id}`,
       createdAt: new Date().toISOString(),
-      freshStart: true, // new accounts always start at zero
+      freshStart: true,
+      isAdmin: false,
     }
-    _setAuth({ ...authData, users: [...users, newUser] })
+    _saveUsers([...users, newUser])
     return newUser
   }
 
   const updateUserPassword = (userId, newPassword) => {
-    _setAuth({
-      ...authData,
-      users: users.map(u => u.id === userId ? { ...u, password: newPassword } : u),
-    })
+    _saveUsers(users.map(u => u.id === userId ? { ...u, password: newPassword } : u))
   }
 
   const deleteUser = (userId) => {
-    if (userId === 'tommy') return // protect main account
-    _setAuth({ ...authData, users: users.filter(u => u.id !== userId) })
+    if (userId === 'tommy') return // protect admin account
+    _saveUsers(users.filter(u => u.id !== userId))
   }
 
-  return {
-    users,
-    currentUser,
-    currentUserId,
-    login,
-    logout,
-    addUser,
-    updateUserPassword,
-    deleteUser,
-  }
+  return { users, currentUser, currentUserId, login, logout, addUser, updateUserPassword, deleteUser }
 }
