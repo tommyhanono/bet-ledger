@@ -6,6 +6,8 @@ const SESSION_DAYS = 30
 const LEGACY_KEY = 'betledger-v1'
 
 // Default users seeded on first launch
+// freshStart: true  → account begins with ZERO entries (empty slate)
+// freshStart: false → account begins with Tommy's -$3,600 deficit seed
 const DEFAULT_USERS = [
   {
     id: 'tommy',
@@ -13,6 +15,7 @@ const DEFAULT_USERS = [
     password: 'tommyhanono987',
     storageKey: 'betledger-v1-tommy',
     createdAt: '2024-01-01T00:00:00.000Z',
+    freshStart: false,
   },
   {
     id: 'testcenter',
@@ -20,6 +23,15 @@ const DEFAULT_USERS = [
     password: '1234567',
     storageKey: 'betledger-v1-testcenter',
     createdAt: '2024-01-01T00:00:00.000Z',
+    freshStart: true,
+  },
+  {
+    id: 'gabobas',
+    name: 'Gabobas',
+    password: 'Gabrielb23',
+    storageKey: 'betledger-v1-gabobas',
+    createdAt: '2024-01-01T00:00:00.000Z',
+    freshStart: true,
   },
 ]
 
@@ -135,6 +147,7 @@ export const useAuth = () => {
       password,
       storageKey: `betledger-v1-${id}`,
       createdAt: new Date().toISOString(),
+      freshStart: true, // new accounts always start at zero
     }
     _setAuth({ ...authData, users: [...users, newUser] })
     return newUser

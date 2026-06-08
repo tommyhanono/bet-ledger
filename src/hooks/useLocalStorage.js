@@ -43,9 +43,10 @@ const fsBatch = async (userId, entries) => {
 }
 
 // ── Hook ─────────────────────────────────────────────────────────────────────
-// userId   = e.g. 'tommy' (used as Firestore document path: users/tommy/entries/...)
-// localKey = e.g. 'betledger-v1-tommy' (localStorage cache key)
-export const useLocalStorage = (localKey = 'betledger-v1', userId = null) => {
+// userId     = e.g. 'tommy' (used as Firestore document path: users/tommy/entries/...)
+// localKey   = e.g. 'betledger-v1-tommy' (localStorage cache key)
+// freshStart = true → new account starts with 0 entries (no deficit seed)
+export const useLocalStorage = (localKey = 'betledger-v1', userId = null, freshStart = false) => {
   const [entries, setEntries] = useState(() => localLoad(localKey) || [])
   const [synced, setSynced]   = useState(false)
   const [loading, setLoading] = useState(true)
@@ -63,8 +64,16 @@ export const useLocalStorage = (localKey = 'betledger-v1', userId = null) => {
 
         const docs = snap.docs.map(d => d.data())
 
-        // First load: if Firestore is empty AND we have local cache → seed Firestore
+        // First load: if Firestore is empty → seed with deficit (tommy) or empty (others)
         if (docs.length === 0 && !synced) {
+          if (freshStart) {
+            // Account starts completely empty — no seed data at all
+            setEntries([])
+            localSave(localKey, [])
+            setSynced(true)
+            setLoading(false)
+            return
+          }
           const cached = localLoad(localKey)
           const initial = cached && cached.length > 0 ? cached : makeSeed()
           fsBatch(userId, initial).catch(console.error)
@@ -124,19 +133,19 @@ export const useLocalStorage = (localKey = 'betledger-v1', userId = null) => {
   }, [_set, userId])
 
   const resetAll = useCallback(async () => {
-    const seed = makeSeed()
-    // Delete all existing then write seed
+    const seed = freshStart ? [] : makeSeed()
+    // Delete all existing docs in Firestore then write seed (if any)
     if (userId) {
       try {
         const snap = await getDocs(colRef(userId))
         const batch = writeBatch(db)
         snap.docs.forEach(d => batch.delete(d.ref))
         await batch.commit()
-        await fsBatch(userId, seed)
+        if (seed.length > 0) await fsBatch(userId, seed)
       } catch (e) { console.error(e) }
     }
     _set(seed)
-  }, [_set, userId])
+  }, [_set, userId, freshStart])
 
   const importEntries = useCallback(async (newEntries) => {
     if (userId) {

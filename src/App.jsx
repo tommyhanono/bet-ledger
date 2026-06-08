@@ -15,7 +15,7 @@ function AppInner({ currentUser, onLogout, authHook }) {
   const [editEntry, setEditEntry] = useState(null)
 
   const { entries, loading, addEntry, editEntry: updateEntry, deleteEntry, resetAll, importEntries } =
-    useLocalStorage(currentUser.storageKey, currentUser.id)
+    useLocalStorage(currentUser.storageKey, currentUser.id, currentUser.freshStart ?? false)
 
   const openAdd = () => { setEditEntry(null); setModalOpen(true) }
   const openEdit = (entry) => { setEditEntry(entry); setModalOpen(true) }
