@@ -39,7 +39,13 @@ export default function Dashboard({ entries, onAddEntry, onEdit }) {
   const runningData = useMemo(() => getRunningPnL(entries), [entries])
   const monthlyData = useMemo(() => getMonthlyPnL(entries), [entries])
   const recent = useMemo(() =>
-    [...entries].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8),
+    [...entries].sort((a, b) => {
+      const dateCmp = b.date.localeCompare(a.date)
+      if (dateCmp !== 0) return dateCmp
+      const at = a.time ?? '00:00'
+      const bt = b.time ?? '00:00'
+      return bt.localeCompare(at)
+    }).slice(0, 8),
     [entries]
   )
 

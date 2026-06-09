@@ -117,6 +117,7 @@ export const useLocalStorage = (localKey = 'betledger-v1', userId = null, freshS
   }, [_set, userId])
 
   const editEntry = useCallback((id, data) => {
+    skipNextSnapshot.current = true
     setEntries((prev) => {
       const resolved = prev.map((e) => (e.id === id ? { ...e, ...data } : e))
       localSave(localKey, resolved)

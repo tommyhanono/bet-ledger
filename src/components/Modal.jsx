@@ -30,7 +30,7 @@ export default function Modal({ open, onClose, onSave, initial }) {
           ...initial,
           result: initial.amount >= 0 ? 'win' : 'loss',
           amount: String(Math.abs(initial.amount)),
-          time: initial.time || '',
+          time: initial.time || nowTime(),
         })
       } else {
         setForm({ ...EMPTY, date: todayISO(), time: nowTime() })
@@ -47,6 +47,7 @@ export default function Modal({ open, onClose, onSave, initial }) {
     if (!form.type.trim()) e.type = 'Required'
     if (!form.amount || isNaN(Number(form.amount)) || Number(form.amount) <= 0) e.amount = 'Enter a positive number'
     if (!form.date) e.date = 'Required'
+    if (!form.time) e.time = 'Required'
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -60,7 +61,7 @@ export default function Modal({ open, onClose, onSave, initial }) {
       type: form.type.trim(),
       amount,
       date: form.date,
-      time: form.time || null,
+      time: form.time,
       platform: form.platform.trim() || null,
       odds: form.category === 'sports' && form.odds.trim() ? form.odds.trim() : null,
       session: form.session.trim() || null,
@@ -183,7 +184,7 @@ export default function Modal({ open, onClose, onSave, initial }) {
               />
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1.5 font-medium">Time <span className="text-slate-600">(optional)</span></label>
+              <label className="block text-xs text-slate-400 mb-1.5 font-medium">Time {errors.time && <span className="text-red-400 ml-1">{errors.time}</span>}</label>
               <input
                 type="time"
                 value={form.time}
